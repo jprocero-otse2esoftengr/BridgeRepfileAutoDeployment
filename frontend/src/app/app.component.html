@@ -1,0 +1,103 @@
+<div class="container">
+    <header class="header">
+        <div class="logo-section">
+            <img src="assets/logo.png" alt="Onetool Solutions Logo" class="logo">
+            <div class="company-info">
+                <h1>E2E Bridge Rep File Deployer</h1>
+                <p class="company-name">Onetool Solutions</p>
+            </div>
+        </div>
+        <div class="user-section" *ngIf="isAuthenticated">
+            <span class="welcome-text">Welcome, {{ currentUser }}!</span>
+            <button class="logout-btn" (click)="logout()">Logout</button>
+        </div>
+    </header>
+    
+    <div class="bridge-info">
+        <h3>Available Bridge Servers</h3>
+        <div class="server-list">
+            <div class="server-item" *ngFor="let server of bridgeServers; let i = index">
+                <input type="checkbox" 
+                       [id]="'server' + i" 
+                       [checked]="selectedServers.includes(i)"
+                       (change)="toggleServer(i)">
+                <label [for]="'server' + i">
+                    <strong>{{ server.name }}</strong><br>
+                    <small>{{ server.scheme }}://{{ server.host }}:{{ server.port }} ({{ server.username }})</small>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div class="upload-area" 
+         [class.dragover]="isDragOver"
+         (dragover)="onDragOver($event)"
+         (dragleave)="onDragLeave($event)"
+         (drop)="onDrop($event)"
+         (click)="fileInput.click()">
+        <h3>📁 Upload .rep Files</h3>
+        <p>Drag and drop your .rep files here or click to browse</p>
+        <input #fileInput type="file" multiple accept=".rep" style="display: none;" (change)="onFileSelected($event)">
+        <button class="btn" (click)="fileInput.click(); $event.stopPropagation()">Choose Files</button>
+    </div>
+
+    <div class="file-list" *ngIf="uploadedFiles.length > 0">
+        <h3>📋 Uploaded Files</h3>
+        <div class="files">
+            <div class="file-item" *ngFor="let file of uploadedFiles; let i = index">
+                <div class="file-info">
+                    <div class="file-name">{{ file.name }}</div>
+                    <div class="file-size">{{ formatFileSize(file.size) }}</div>
+                </div>
+                <div>
+                    <input type="checkbox" 
+                           [id]="'file' + i" 
+                           [checked]="file.selected"
+                           (change)="toggleFile(i)">
+                    <label [for]="'file' + i">Select</label>
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-success" (click)="deploySelected()">Deploy Selected Files</button>
+        <button class="btn btn-danger" (click)="clearAll()">Clear All</button>
+    </div>
+
+    <div class="loading" *ngIf="isLoading">
+        <div class="spinner"></div>
+        <p>Deploying files to Bridge server...</p>
+    </div>
+
+    <div class="deployment-status" *ngIf="deploymentResults">
+        <h4>📋 Deployment Results</h4>
+        
+        <div class="deployment-results" *ngIf="deploymentResults && deploymentResults.successfulDeployments && deploymentResults.successfulDeployments.length > 0">
+            <div class="deployment-result success" *ngFor="let success of deploymentResults.successfulDeployments">
+                <span class="deployment-result-icon">✅</span>
+                <div class="deployment-result-text">
+                    <strong>{{ success.fileName }} → {{ success.server }}</strong><br>
+                    <small>{{ success.message }}</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="deployment-results" *ngIf="deploymentResults && deploymentResults.failedDeployments && deploymentResults.failedDeployments.length > 0" style="margin-top: 20px;">
+            <div class="deployment-result failed" *ngFor="let fail of deploymentResults.failedDeployments">
+                <span class="deployment-result-icon">❌</span>
+                <div class="deployment-result-text">
+                    <strong>{{ fail.fileName }} → {{ fail.server }}</strong><br>
+                    <small>{{ fail.error }}</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="deployment-results" *ngIf="deploymentResults && (!deploymentResults.successfulDeployments || deploymentResults.successfulDeployments.length === 0) && (!deploymentResults.failedDeployments || deploymentResults.failedDeployments.length === 0)">
+            <div class="deployment-result failed">
+                <span class="deployment-result-icon">❌</span>
+                <div class="deployment-result-text">
+                    <strong>Deployment Error</strong><br>
+                    <small>{{ deploymentResults.error || 'Unknown error occurred' }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,27 @@
+{
+  "name": "autodeploy-with-ui",
+  "version": "1.0.0",
+  "description": "E2E Bridge Rep File Deployer with Angular UI",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "cd backend && node server.js",
+    "dev": "cd backend && node server.js",
+    "build:ui": "cd frontend && ng build",
+    "install:backend": "cd backend && npm install",
+    "install:ui": "cd frontend && npm install",
+    "install:all": "npm run install:backend && npm run install:ui"
+  },
+  "keywords": [
+    "e2e-bridge",
+    "nodejs",
+    "angular",
+    "file-deployer",
+    "rep-files"
+  ],
+  "author": "Onetool Solutions",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/autodeploy-with-ui.git"
+  }
+}

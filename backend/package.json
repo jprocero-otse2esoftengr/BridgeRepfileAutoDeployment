@@ -1,0 +1,32 @@
+{
+  "name": "autodeployWithUi",
+  "version": "1.0.0",
+  "description": "Web application for deploying .rep files to multiple E2E Bridge servers",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "e2e-bridge",
+    "deployment",
+    "rep-files",
+    "scheer-pas",
+    "oauth"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/e2e-bridge-rep-deployer.git"
+  },
+  "dependencies": {
+    "axios": "^1.12.2",
+    "e2e-conf": "^3.0.3",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "multer": "^2.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
