@@ -143,8 +143,10 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: sessionCookieSecure, // Set to true if using HTTPS
-        maxAge: sessionCookieMaxAge
+        secure: sessionCookieSecure,
+        maxAge: sessionCookieMaxAge,
+        httpOnly: true,
+        sameSite: 'strict'
     }
 }));
 
@@ -193,11 +195,9 @@ async function authenticateWithKeycloak(username, password) {
 // Authentication middleware
 function requireAuth(req, res, next) {
     if (req.session && req.session.authenticated) {
-        console.log('User authenticated via session:', req.session.username);
         return next();
     }
     
-    console.log('User not authenticated');
     // For API routes, return JSON error instead of redirect
     if (req.path.startsWith('/api/') || req.path.startsWith('/upload') || req.path.startsWith('/deploy') || req.path.startsWith('/clear')) {
         return res.status(401).json({ 
@@ -243,87 +243,80 @@ async function getOAuthToken(server) {
     }
 }
 
-// Function to deploy using OAuth token
-async function deployWithOAuth(filePath, server, token) {
+// Constants
+const DEPLOYMENT_QUERY_PARAMS = 'overwrite=true&overwritePrefs=false&startup=false&preserveNodeModules=false&npmInstall=false&runScripts=false&stopTimeout=10&allowKill=false';
+
+// Function to get deployment path for a server
+function getDeploymentPath(server) {
+    if (server.deploymentPath) {
+        return server.deploymentPath;
+    }
+    
+    // Fallback to hostname-based logic for backward compatibility
+    if (server.host.includes('ec2-18-140-203-30')) {
+        return '/ots/bridge/bridge/rest/services';
+    } else if (server.host.includes('ec2-54-151-161-17')) {
+        return '/ots2/bridge/bridge/rest/services';
+    }
+    return '/bridge/bridge/rest/services';
+}
+
+// Function to build deployment URL
+function buildDeploymentUrl(server) {
+    const deploymentPath = getDeploymentPath(server);
+    return `${server.scheme}://${server.host}:${server.port}${deploymentPath}?${DEPLOYMENT_QUERY_PARAMS}`;
+}
+
+// Function to deploy file (unified for both OAuth and Basic Auth)
+async function deployFile(filePath, server, options = {}) {
     try {
         const FormData = require('form-data');
         const form = new FormData();
         form.append('uploadFile', fs.createReadStream(filePath));
 
-        // Determine the correct deployment path based on the server
-        let deploymentPath;
-        if (server.host.includes('ec2-18-140-203-30')) {
-            // Server 2: uses /ots path
-            deploymentPath = '/ots/bridge/bridge/rest/services';
-        } else if (server.host.includes('ec2-54-151-161-17')) {
-            // Server 3: uses /ots2 path
-            deploymentPath = '/ots2/bridge/bridge/rest/services';
-        } else {
-            // Default for other servers
-            deploymentPath = '/bridge/bridge/rest/services';
-        }
-            
-        const response = await axios.post(
-            `${server.scheme}://${server.host}:${server.port}${deploymentPath}?overwrite=true&overwritePrefs=false&startup=false&preserveNodeModules=false&npmInstall=false&runScripts=false&stopTimeout=10&allowKill=false`,
-            form,
-            {
-                headers: {
-                    ...form.getHeaders(),
-                    'Authorization': `Bearer ${token}`,
-                    'accept': 'application/json'
-                },
-                httpsAgent
-            }
-        );
+        const deploymentUrl = buildDeploymentUrl(server);
+        const authType = server.authType || 'basic';
+        
+        const headers = {
+            ...form.getHeaders(),
+            'accept': 'application/json'
+        };
 
+        const config = {
+            headers,
+            httpsAgent
+        };
+
+        if (authType === 'oauth' && options.token) {
+            headers['Authorization'] = `Bearer ${options.token}`;
+        } else {
+            config.auth = {
+                username: server.username,
+                password: server.password
+            };
+        }
+
+        const response = await axios.post(deploymentUrl, form, config);
         return response.data;
     } catch (error) {
-        console.error('OAuth deployment failed:', error.response?.data || error.message);
-        throw error;
+        const deploymentPath = getDeploymentPath(server);
+        const errorMessage = error.response?.status === 404
+            ? `Endpoint not found (404). Check if deployment path '${deploymentPath}' is correct for ${server.host}.`
+            : error.response?.data?.error || error.message;
+        
+        console.error(`Deployment failed for ${server.name}:`, errorMessage);
+        throw new Error(`Deployment to ${server.name} failed: ${errorMessage}`);
     }
+}
+
+// Function to deploy using OAuth token
+async function deployWithOAuth(filePath, server, token) {
+    return deployFile(filePath, server, { token });
 }
 
 // Function to deploy using Basic Auth
 async function deployWithBasicAuth(filePath, server) {
-    try {
-        const FormData = require('form-data');
-        const form = new FormData();
-        form.append('uploadFile', fs.createReadStream(filePath));
-
-        // Determine the correct deployment path based on the server
-        let deploymentPath;
-        if (server.host.includes('ec2-18-140-203-30')) {
-            // Server 2: uses /ots path
-            deploymentPath = '/ots/bridge/bridge/rest/services';
-        } else if (server.host.includes('ec2-54-151-161-17')) {
-            // Server 3: uses /ots2 path
-            deploymentPath = '/ots2/bridge/bridge/rest/services';
-        } else {
-            // Default for other servers
-            deploymentPath = '/bridge/bridge/rest/services';
-        }
-            
-        const response = await axios.post(
-            `${server.scheme}://${server.host}:${server.port}${deploymentPath}?overwrite=true&overwritePrefs=false&startup=false&preserveNodeModules=false&npmInstall=false&runScripts=false&stopTimeout=10&allowKill=false`,
-            form,
-            {
-                headers: {
-                    ...form.getHeaders(),
-                    'accept': 'application/json'
-                },
-                auth: {
-                    username: server.username,
-                    password: server.password
-                },
-                httpsAgent
-            }
-        );
-
-        return response.data;
-    } catch (error) {
-        console.error('Basic Auth deployment failed:', error.response?.data || error.message);
-        throw error;
-    }
+    return deployFile(filePath, server);
 }
 
 // Configure multer for file uploads
@@ -372,69 +365,35 @@ const angularBuildCandidates = [
 const angularBuildPath = angularBuildCandidates.find(candidate => fs.existsSync(candidate)) || angularBuildCandidates[0];
 const rootPath = __dirname;
 
-console.log(`Looking for Angular UI files...`);
-console.log(`  - Angular build candidates:`);
-angularBuildCandidates.forEach(candidate => {
-    console.log(`    * ${candidate} ${fs.existsSync(candidate) ? '(exists)' : '(missing)'}`);
-});
-console.log(`  - Selected Angular build path: ${angularBuildPath}`);
-console.log(`  - Root path: ${rootPath}`);
-
 // Check if we have Angular files in the build directory (for local development)
-const angularFiles = ['index.html', 'main-7HLBW2LV.js', 'polyfills-5CFQRCPP.js', 'styles-LBSJOWU2.css'];
+const angularFiles = ['index.html'];
 const buildFiles = angularFiles.filter(file => fs.existsSync(path.join(angularBuildPath, file)));
 const rootFiles = angularFiles.filter(file => fs.existsSync(path.join(rootPath, file)));
 
-console.log(`Found Angular files in build directory: ${buildFiles.join(', ')}`);
-console.log(`Found Angular files in root directory: ${rootFiles.join(', ')}`);
-
 if (buildFiles.length > 0) {
-    // Local development - serve from Angular build directory
     app.use(express.static(angularBuildPath));
-    console.log(`Static files will be served from Angular build directory: ${angularBuildPath}`);
+    console.log(`Serving Angular UI from: ${angularBuildPath}`);
 } else if (rootFiles.length > 0) {
-    // Bridge deployment - serve from root directory
     app.use(express.static(rootPath));
-    console.log(`Static files will be served from root directory: ${rootPath}`);
+    console.log(`Serving Angular UI from: ${rootPath}`);
 } else {
-    console.log('No Angular files found in either location!');
+    console.warn('No Angular UI files found. Build the frontend first.');
 }
 
 // Serve the main UI at root path
 app.get('/', (req, res) => {
-    console.log('Root path requested');
-    
-    // Try Angular build directory first (local development)
     const buildIndexPath = path.join(angularBuildPath, 'index.html');
     const rootIndexPath = path.join(rootPath, 'index.html');
     
-    console.log(`Looking for index.html at: ${buildIndexPath}`);
-    console.log(`Build index.html exists: ${fs.existsSync(buildIndexPath)}`);
-    console.log(`Looking for index.html at: ${rootIndexPath}`);
-    console.log(`Root index.html exists: ${fs.existsSync(rootIndexPath)}`);
-    
     if (fs.existsSync(buildIndexPath)) {
-        console.log(`Serving index.html from Angular build directory: ${buildIndexPath}`);
         return res.sendFile(buildIndexPath);
     } else if (fs.existsSync(rootIndexPath)) {
-        console.log(`Serving index.html from root directory: ${rootIndexPath}`);
         return res.sendFile(rootIndexPath);
     } else {
-        console.log('index.html not found in either location');
-        res.status(404).send(`
-            <h2>Angular UI not found</h2>
-            <p>Current working directory: ${__dirname}</p>
-            <p>Angular build path: ${angularBuildPath}</p>
-            <p>Root path: ${rootPath}</p>
-            <p>Build directory contents:</p>
-            <ul>
-                ${fs.existsSync(angularBuildPath) ? fs.readdirSync(angularBuildPath).map(f => `<li>${f}</li>`).join('') : '<li>Directory does not exist</li>'}
-            </ul>
-            <p>Root directory contents:</p>
-            <ul>
-                ${fs.readdirSync(__dirname).map(f => `<li>${f}</li>`).join('')}
-            </ul>
-        `);
+        res.status(404).json({
+            error: 'UI not found',
+            message: 'Please build the Angular frontend first'
+        });
     }
 });
 
@@ -451,20 +410,14 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Username and password are required' });
         }
         
-        console.log(`Attempting login for user: ${username}`);
-        
         const authResult = await authenticateWithKeycloak(username, password);
         
         if (authResult.success) {
-            // Store user session
             req.session.authenticated = true;
             req.session.username = username;
             req.session.accessToken = authResult.accessToken;
-            
-            console.log(`Login successful for user: ${username}`);
             res.json({ success: true, message: 'Login successful' });
         } else {
-            console.log(`Login failed for user: ${username} - ${authResult.error}`);
             res.json({ success: false, error: authResult.error });
         }
     } catch (error) {
@@ -616,7 +569,7 @@ app.post('/deploy', requireAuth, async (req, res) => {
 });
 
 // Clear uploaded files endpoint
-app.post('/clear', (req, res) => {
+app.post('/clear', requireAuth, (req, res) => {
     try {
         if (global.uploadedFiles) {
             // Delete physical files
@@ -642,27 +595,32 @@ app.get('/health', (req, res) => {
     });
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(err.status || 500).json({
+        success: false,
+        error: process.env.NODE_ENV === 'production' 
+            ? 'Internal server error' 
+            : err.message
+    });
+});
+
 // Catch-all route to serve Angular app for any route that doesn't match API endpoints
 // This MUST be at the very end, after all API routes
 app.get('*', (req, res) => {
-    console.log(`Catch-all route requested: ${req.path}`);
-    
-    // Try Angular build directory first (local development)
     const buildIndexPath = path.join(angularBuildPath, 'index.html');
     const rootIndexPath = path.join(rootPath, 'index.html');
     
     if (fs.existsSync(buildIndexPath)) {
-        console.log(`Serving index.html for route: ${req.path} from Angular build directory`);
         return res.sendFile(buildIndexPath);
     } else if (fs.existsSync(rootIndexPath)) {
-        console.log(`Serving index.html for route: ${req.path} from root directory`);
         return res.sendFile(rootIndexPath);
     } else {
-        console.log('index.html not found in either location');
         res.status(404).json({
             error: 'Route not found',
             path: req.path,
-            message: 'This is an API-only server. Available endpoints: /api/auth/status, /api/auth/login, /api/auth/logout, /api/servers, /upload, /deploy, /clear, /health'
+            message: 'Available endpoints: /api/auth/status, /api/auth/login, /api/auth/logout, /api/servers, /upload, /deploy, /clear, /health'
         });
     }
 });

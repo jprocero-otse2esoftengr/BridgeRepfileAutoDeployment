@@ -1,7 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
-import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 
 @Component({
@@ -328,7 +327,7 @@ export class LoginComponent implements OnInit {
   isLoading: boolean = false;
   errorMessage: string = '';
 
-  constructor(private http: HttpClient, private router: Router) {}
+  constructor(private http: HttpClient) {}
 
   ngOnInit() {
     // Check if already authenticated
@@ -337,12 +336,11 @@ export class LoginComponent implements OnInit {
 
   checkAuthStatus() {
     this.http.get<any>('/api/auth/status').subscribe({
-      next: (data) => {
-        // Don't navigate - let parent component handle the state
-        // The parent will show/hide this component based on authentication
+      next: () => {
+        // Parent component handles authentication state
       },
-      error: (error) => {
-        console.error('Auth status check failed:', error);
+      error: () => {
+        // Silently handle error - parent component will check status
       }
     });
   }

@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 import { LoginComponent } from './login.component';
@@ -151,27 +151,35 @@ interface DeploymentResult {
   `,
   styleUrls: ['./app.component.css']
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   bridgeServers: BridgeServer[] = [];
-  selectedServers: number[] = [0, 1, 2]; // Default: all servers selected
+  selectedServers: number[] = []; // Will be initialized when servers are loaded
   uploadedFiles: UploadedFile[] = [];
   isDragOver = false;
   isLoading = false;
   deploymentResults: DeploymentResult | null = null;
   isAuthenticated = false;
   currentUser: string | null = null;
+  private authCheckInterval: any;
 
   constructor(private http: HttpClient) {}
 
   ngOnInit() {
     this.checkAuthStatus();
     
-    // Listen for authentication changes (e.g., from login component)
-    setInterval(() => {
+    // Check authentication status periodically when not authenticated
+    // Reduced frequency to every 5 seconds instead of 1 second
+    this.authCheckInterval = setInterval(() => {
       if (!this.isAuthenticated) {
         this.checkAuthStatus();
       }
-    }, 1000); // Check every second if not authenticated
+    }, 5000);
+  }
+
+  ngOnDestroy() {
+    if (this.authCheckInterval) {
+      clearInterval(this.authCheckInterval);
+    }
   }
 
   // Check authentication status
@@ -183,13 +191,10 @@ export class AppComponent implements OnInit {
         if (this.isAuthenticated) {
           this.loadBridgeServers();
         }
-        // Don't redirect - let Angular handle the display
       },
-      error: (error) => {
-        console.error('Auth status check failed:', error);
+      error: () => {
         this.isAuthenticated = false;
         this.currentUser = null;
-        // Don't redirect - let Angular handle the display
       }
     });
   }
@@ -200,13 +205,10 @@ export class AppComponent implements OnInit {
       next: () => {
         this.isAuthenticated = false;
         this.currentUser = null;
-        // Don't redirect - let Angular handle the display
       },
-      error: (error) => {
-        console.error('Logout failed:', error);
+      error: () => {
         this.isAuthenticated = false;
         this.currentUser = null;
-        // Don't redirect - let Angular handle the display
       }
     });
   }
@@ -216,9 +218,11 @@ export class AppComponent implements OnInit {
     this.http.get<BridgeServer[]>('/api/servers').subscribe({
       next: (servers) => {
         this.bridgeServers = servers;
+        // Select all servers by default
+        this.selectedServers = servers.map((_, index) => index);
       },
-      error: (error) => {
-        console.error('Failed to load bridge servers:', error);
+      error: () => {
+        // Error handling - servers will remain empty
       }
     });
   }

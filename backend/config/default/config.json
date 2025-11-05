@@ -29,7 +29,8 @@
       "port": "8080",
       "username": "jprocero",
       "password": "jprocero",
-      "scheme": "https"
+      "scheme": "https",
+      "deploymentPath": "/bridge/rest/services"
     },
     {
       "name": "AWS Bridge Server 2 (OAuth)",
@@ -41,7 +42,8 @@
       "authType": "oauth",
       "keycloakUrl": "https://ec2-18-140-203-30.ap-southeast-1.compute.amazonaws.com/ots/keycloak/realms/PAS/protocol/openid-connect/token",
       "clientId": "bridge",
-      "clientSecret": "password"
+      "clientSecret": "password",
+      "deploymentPath": "/ots/bridge/bridge/rest/services"
     },
     {
       "name": "AWS Bridge Server 3 (OAuth)",
@@ -53,7 +55,8 @@
       "authType": "oauth",
       "keycloakUrl": "https://ec2-54-151-161-17.ap-southeast-1.compute.amazonaws.com/ots2/keycloak/realms/PAS/protocol/openid-connect/token",
       "clientId": "bridge",
-      "clientSecret": "password"
+      "clientSecret": "password",
+      "deploymentPath": "/ots2/bridge/bridge/rest/services"
     }
   ]
 }
